@@ -2,6 +2,12 @@
 
 All notable changes are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Changed
+
+- Releasing is pushing a tag: the release workflow sets the version, dates this changelog, and commits that to `main` before building.
+
 ## 0.1.1 - 2026-10-27
 
 ### Fixed
