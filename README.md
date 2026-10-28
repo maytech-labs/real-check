@@ -84,7 +84,7 @@ REAL_LICENSE_PATH=../real-license/LICENSE.md cargo test
 
 ## Releasing
 
-Bump `version` in `Cargo.toml`, add its section to `CHANGELOG.md`, and push a `vX.Y.Z` tag. The release workflow builds macOS and Linux binaries, publishes the GitHub release, and updates the formula in [maytech-labs/homebrew-tap](https://github.com/maytech-labs/homebrew-tap) using the `HOMEBREW_TAP_TOKEN` secret.
+Add changes to `CHANGELOG.md` under **Unreleased** as they land. To release, tag `main`'s latest commit and push the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`. The release workflow sets the version in `Cargo.toml` and `Cargo.lock`, dates the changelog section, commits that to `main`, and moves the tag onto it. Then it builds macOS and Linux binaries, publishes the GitHub release, and updates the formula in [maytech-labs/homebrew-tap](https://github.com/maytech-labs/homebrew-tap) using the `HOMEBREW_TAP_TOKEN` secret.
 
 ## License
 
