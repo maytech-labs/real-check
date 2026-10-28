@@ -98,7 +98,7 @@ jobs:
       - name: Bump the formula
         run: |
           formula=Formula/real-check.rb
-          version="${GITHUB_REF_NAME#v}"
+          version="${GITHUB_REF_NAME#v}"  # brew reads the version from the urls
           base="https://github.com/maytech-labs/real-check/releases/download/$GITHUB_REF_NAME"
           # Each archive's url line names its target; its sha256 follows it.
           for checksum in dist/*.tar.gz.sha256; do
@@ -114,7 +114,6 @@ jobs:
             mv formula.tmp "$formula"
             grep -q "$sha" "$formula" || { echo "no url for $target in $formula"; exit 1; }
           done
-          sed -i "s|^  version \".*\"|  version \"$version\"|" "$formula"
           git diff --exit-code --quiet && { echo "formula already at $version"; exit 0; }
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
