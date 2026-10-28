@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LicenseRef-REAL-1.0
 
+mod cargo;
 mod policy;
 mod repo;
 mod report;
@@ -93,6 +94,9 @@ struct DepsArgs {
     /// CycloneDX or SPDX JSON SBOM to check instead of running syft.
     #[arg(long)]
     sbom: Option<PathBuf>,
+    /// Don't let syft look up licenses online.
+    #[arg(long)]
+    offline: bool,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -176,9 +180,14 @@ fn check_deps(root: &Path, policy: &Policy, args: &DepsArgs) -> Result<Report> {
     let text = match &args.sbom {
         Some(path) => std::fs::read_to_string(path)
             .with_context(|| format!("reading SBOM {}", path.display()))?,
-        None => sbom::generate(root)?,
+        None => sbom::generate(root, !args.offline)?,
     };
-    Ok(sbom::check(&sbom::parse(&text)?, policy))
+    let mut packages = sbom::parse(&text)?;
+    sbom::drop_own(root, &mut packages);
+    let warnings = cargo::fill(root, &mut packages);
+    let mut report = sbom::check(&packages, policy);
+    report.findings.extend(warnings);
+    Ok(report)
 }
 
 fn emit(report: &Report, common: &Common) -> Result<bool> {

@@ -306,6 +306,8 @@ mod tests {
     fn resolves_aliases() {
         assert_eq!(verdict("MIT License"), Verdict::Allow);
         assert_eq!(verdict("Apache License, Version 2.0"), Verdict::Allow);
+        assert_eq!(verdict("3-Clause BSD License"), Verdict::Allow);
+        assert_eq!(verdict("GPL"), Verdict::Deny);
         assert_eq!(
             verdict("Reciprocal Ethical AI License (REAL) 1.0"),
             Verdict::Allow

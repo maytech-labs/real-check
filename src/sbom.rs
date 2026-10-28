@@ -15,8 +15,9 @@ pub struct Package {
     pub name: String,
     pub version: Option<String>,
     pub purl: Option<String>,
-    /// SPDX expression or license name; `None` when the SBOM declares nothing.
-    pub license: Option<String>,
+    /// SPDX expressions or license names, all of which apply; empty when the
+    /// SBOM declares none.
+    pub licenses: Vec<String>,
 }
 
 impl Package {
@@ -29,13 +30,20 @@ impl Package {
     }
 }
 
-/// Generates a CycloneDX SBOM for `root` with syft.
-pub fn generate(root: &Path) -> Result<String> {
-    let output = Command::new("syft")
+/// Generates a CycloneDX SBOM for `root` with syft. `enrich` lets syft look
+/// up licenses online that lockfiles don't record.
+pub fn generate(root: &Path, enrich: bool) -> Result<String> {
+    let mut command = Command::new("syft");
+    command
         .arg("scan")
         .arg(format!("dir:{}", root.display()))
         .args(["--output", "cyclonedx-json", "--quiet"])
-        .output();
+        // Build output, which syft would otherwise crawl, and isn't a dependency.
+        .args(["--exclude", "**/target/**", "--exclude", "**/.git/**"]);
+    if enrich {
+        command.args(["--enrich", "all"]);
+    }
+    let output = command.output();
     let output = match output {
         Ok(output) => output,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -64,6 +72,12 @@ pub fn parse(text: &str) -> Result<Vec<Package>> {
     } else {
         bail!("unrecognized SBOM format; expected CycloneDX or SPDX JSON");
     };
+    // GitHub Actions from workflow files run in CI and aren't distributed.
+    packages.retain(|p| {
+        !p.purl
+            .as_deref()
+            .is_some_and(|purl| purl.starts_with("pkg:github/"))
+    });
     packages.sort();
     packages.dedup();
     Ok(packages)
@@ -89,7 +103,7 @@ fn cyclonedx_components(components: Option<&Value>, out: &mut Vec<Package>) {
                 name: str_field(c, "name").unwrap_or_default(),
                 version: str_field(c, "version"),
                 purl: str_field(c, "purl"),
-                license: combine(licenses),
+                licenses: unique(licenses),
             });
         }
         cyclonedx_components(c.get("components"), out);
@@ -126,7 +140,10 @@ fn spdx_packages(doc: &Value) -> Vec<Package> {
                 name: str_field(p, "name").unwrap_or_default(),
                 version: str_field(p, "versionInfo"),
                 purl,
-                license: assertion("licenseConcluded").or_else(|| assertion("licenseDeclared")),
+                licenses: assertion("licenseConcluded")
+                    .or_else(|| assertion("licenseDeclared"))
+                    .into_iter()
+                    .collect(),
             }
         })
         .collect()
@@ -136,20 +153,46 @@ fn str_field(v: &Value, key: &str) -> Option<String> {
     v.get(key).and_then(Value::as_str).map(str::to_string)
 }
 
-/// Several license entries on one component are treated as all applying.
-fn combine(licenses: Vec<String>) -> Option<String> {
-    let unique: BTreeSet<String> = licenses.into_iter().collect();
-    match unique.len() {
-        0 => None,
-        1 => unique.into_iter().next(),
-        _ => Some(
-            unique
-                .iter()
-                .map(|l| format!("({l})"))
-                .collect::<Vec<_>>()
-                .join(" AND "),
-        ),
+fn unique(licenses: Vec<String>) -> Vec<String> {
+    licenses
+        .into_iter()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+/// Drops the scanned project's own npm, Python or Go package, which syft
+/// lists alongside its dependencies. Cargo workspaces are handled in `cargo`.
+pub fn drop_own(root: &Path, packages: &mut Vec<Package>) {
+    let mut own = Vec::new();
+    if let Some(name) = std::fs::read_to_string(root.join("package.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|json| str_field(&json, "name"))
+    {
+        own.push(("pkg:npm/", name));
     }
+    if let Some(name) = std::fs::read_to_string(root.join("pyproject.toml"))
+        .ok()
+        .and_then(|text| text.parse::<toml::Table>().ok())
+        .and_then(|toml| Some(toml.get("project")?.get("name")?.as_str()?.to_string()))
+    {
+        own.push(("pkg:pypi/", name));
+    }
+    if let Some(module) = std::fs::read_to_string(root.join("go.mod"))
+        .ok()
+        .and_then(|text| {
+            let line = text.lines().find(|l| l.starts_with("module "))?;
+            Some(line["module ".len()..].trim().to_string())
+        })
+    {
+        own.push(("pkg:golang/", module));
+    }
+    packages.retain(|p| {
+        !own.iter().any(|(kind, name)| {
+            p.name == *name && p.purl.as_deref().is_none_or(|purl| purl.starts_with(kind))
+        })
+    });
 }
 
 pub fn check(packages: &[Package], policy: &Policy) -> Report {
@@ -158,8 +201,14 @@ pub fn check(packages: &[Package], policy: &Policy) -> Report {
         ..Report::default()
     };
     for package in packages {
-        let license = package.license.as_deref().unwrap_or("");
-        let c = policy.classify(license);
+        // Several license entries on one component all apply.
+        let license = package.licenses.join(" AND ");
+        let c = if package.licenses.is_empty() {
+            policy.classify("")
+        } else {
+            let all = package.licenses.iter().map(|l| policy.classify(l));
+            all.max_by_key(|c| c.verdict).expect("non-empty")
+        };
         if c.verdict == Verdict::Allow {
             continue;
         }
@@ -211,8 +260,9 @@ mod tests {
         {"type": "library", "name": "readline", "version": "8.2", "purl": "pkg:deb/readline@8.2",
          "licenses": [{"license": {"id": "GPL-3.0-only"}}]},
         {"type": "library", "name": "dual", "version": "1",
-         "licenses": [{"license": {"id": "MIT"}}, {"license": {"name": "MPL-2.0"}}],
+         "licenses": [{"license": {"id": "MIT"}}, {"license": {"name": "Mozilla Public License 2.0"}}],
          "components": [{"type": "library", "name": "nested", "version": "2"}]},
+        {"type": "library", "name": "actions/checkout", "version": "v7.0.1", "purl": "pkg:github/actions/checkout@v7.0.1"},
         {"type": "file", "name": "/some/file"}
       ]
     }"#;
@@ -234,17 +284,42 @@ mod tests {
         let packages = parse(CYCLONEDX).unwrap();
         let names: Vec<_> = packages.iter().map(|p| p.name.as_str()).collect();
         assert_eq!(names, vec!["dual", "nested", "readline", "serde"]);
-        assert_eq!(packages[0].license.as_deref(), Some("(MIT) AND (MPL-2.0)"));
-        assert_eq!(packages[1].license, None);
+        assert_eq!(
+            packages[0].licenses,
+            vec!["MIT", "Mozilla Public License 2.0"]
+        );
+        assert!(packages[1].licenses.is_empty());
     }
 
     #[test]
     fn parses_spdx() {
         let packages = parse(SPDX).unwrap();
         assert_eq!(packages.len(), 2);
-        assert_eq!(packages[0].license.as_deref(), Some("WTFPL"));
+        assert_eq!(packages[0].licenses, vec!["WTFPL"]);
         assert_eq!(packages[0].purl.as_deref(), Some("pkg:npm/left-pad@1.3.0"));
-        assert_eq!(packages[1].license, None);
+        assert!(packages[1].licenses.is_empty());
+    }
+
+    #[test]
+    fn drops_own_package() {
+        let dir = std::env::temp_dir().join(format!("real-check-own-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("package.json"), r#"{"name": "site"}"#).unwrap();
+        let package = |name: &str, purl: &str| Package {
+            name: name.into(),
+            version: Some("1.0.0".into()),
+            purl: Some(purl.into()),
+            licenses: vec![],
+        };
+        let mut packages = vec![
+            package("site", "pkg:npm/site@1.0.0"),
+            package("site", "pkg:pypi/site@1.0.0"),
+            package("react", "pkg:npm/react@19.0.0"),
+        ];
+        drop_own(&dir, &mut packages);
+        let purls: Vec<_> = packages.iter().filter_map(|p| p.purl.as_deref()).collect();
+        assert_eq!(purls, vec!["pkg:pypi/site@1.0.0", "pkg:npm/react@19.0.0"]);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

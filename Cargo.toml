@@ -1,6 +1,6 @@
 [package]
 name = "real-check"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Checks a repository and its dependencies for compatibility with the Reciprocal Ethical AI License (REAL)"
 license-file = "LICENSE.md"

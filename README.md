@@ -14,6 +14,13 @@ Or from source: `cargo install --git https://github.com/maytech-labs/real-check`
 
 `real-check deps` and `real-check check` read dependency licenses from an SBOM. Without `--sbom`, they generate one with [syft](https://github.com/anchore/syft), which the brew formula installs. `real-check repo` needs nothing else.
 
+## Dependencies
+
+- syft looks up licenses that lockfiles don't record, online. `--offline` turns that off, at the cost of many more unknown licenses.
+- Rust crate licenses come from `cargo metadata` for every Cargo workspace in the repository, or from the local registry cache when that can't run, for example because `Cargo.lock` is out of date. `real-check` never rewrites a lockfile.
+- The scanned project's own packages, GitHub Actions (which run in CI and aren't distributed), and `target/` directories are left out.
+- npm devDependencies aren't in syft's SBOM, so they aren't checked.
+
 ## Usage
 
 ```sh
@@ -24,7 +31,7 @@ real-check classify "MIT OR GPL-3.0-only"
 real-check policy > .real-check.toml
 ```
 
-Common flags: `--format json`, `--strict` (fail on warnings), `--policy FILE`.
+Common flags: `--format json`, `--strict` (fail on warnings), `--policy FILE`. `deps` and `check` also take `--sbom FILE` and `--offline`.
 
 Exit codes: `0` passed, `1` errors found (or warnings with `--strict`), `2` the tool could not run.
 
@@ -46,6 +53,7 @@ Exit codes: `0` passed, `1` errors found (or warnings with `--strict`), `2` the 
 | `dependency-review` | warning | Dependency needs a human look (e.g. LGPL, MPL) |
 | `dependency-unknown` | error | No license declared, or one the policy does not cover |
 | `dependency-exception` | info | Dependency excepted by the policy |
+| `cargo-metadata` | warning | `cargo metadata` failed for a workspace; crate licenses came from the registry cache |
 
 ## Policy
 
