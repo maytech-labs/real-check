@@ -1,0 +1,106 @@
+# SPDX-License-Identifier: LicenseRef-REAL-1.0
+
+# Default real-check policy: which inbound licenses may be combined into a
+# project licensed under REAL 1.0.
+#
+# This is the licensor's reading of REAL 1.0, not legal advice.
+#
+# Rules are evaluated in order and the first match wins. Patterns are SPDX
+# identifiers, matched case-insensitively; a trailing `*` matches any suffix.
+# For SPDX expressions, `OR` takes the most permissive branch and `AND` the
+# most restrictive. Anything that matches no rule is reported as unknown.
+
+[aliases]
+"Reciprocal Ethical AI License (REAL) 1.0" = "LicenseRef-REAL-1.0"
+"Reciprocal Ethical AI License (REAL) — Version 1.0" = "LicenseRef-REAL-1.0"
+"REAL-1.0" = "LicenseRef-REAL-1.0"
+"MIT License" = "MIT"
+"The MIT License" = "MIT"
+"Apache 2.0" = "Apache-2.0"
+"Apache License 2.0" = "Apache-2.0"
+"Apache License, Version 2.0" = "Apache-2.0"
+"The Apache Software License, Version 2.0" = "Apache-2.0"
+"BSD License" = "BSD-3-Clause"
+"ISC License" = "ISC"
+
+[[rule]]
+verdict = "allow"
+licenses = ["LicenseRef-REAL-1.0"]
+reason = "Same license."
+
+[[rule]]
+verdict = "review"
+licenses = ["LicenseRef-REAL-*"]
+reason = "A different REAL version; check that its terms match 1.0."
+
+[[rule]]
+verdict = "deny"
+licenses = ["GPL-*", "AGPL-*"]
+reason = "GPL-family licenses forbid further restrictions; REAL §4 adds field-of-use restrictions."
+
+[[rule]]
+verdict = "deny"
+licenses = ["EUPL-*", "OSL-*", "RPL-*", "CPAL-*", "CC-BY-SA-*"]
+reason = "Strong copyleft or share-alike requiring derivatives under its own terms, which conflicts with REAL §2."
+
+[[rule]]
+verdict = "deny"
+licenses = ["CC-BY-NC*", "CC-BY-ND*"]
+reason = "Non-commercial or no-derivatives terms are narrower than the rights REAL grants downstream."
+
+[[rule]]
+verdict = "deny"
+licenses = ["SSPL-*", "BUSL-*", "Elastic-2.0", "Commons-Clause"]
+reason = "Source-available license with restrictions REAL cannot pass through."
+
+[[rule]]
+verdict = "review"
+licenses = ["LGPL-*"]
+reason = "Weak copyleft; generally acceptable only when dynamically linked and kept replaceable."
+
+[[rule]]
+verdict = "review"
+licenses = ["MPL-*", "EPL-*", "CDDL-*"]
+reason = "File- or module-level copyleft; acceptable if those files stay separate and under their own license."
+
+[[rule]]
+verdict = "review"
+licenses = ["*OpenRAIL*", "*RAIL*"]
+reason = "RAIL-family use restrictions; check they are compatible with REAL §4."
+
+[[rule]]
+verdict = "review"
+licenses = ["OFL-*", "Artistic-*"]
+reason = "Permissive with conditions on how the work is distributed or renamed."
+
+[[rule]]
+verdict = "allow"
+licenses = [
+  "0BSD",
+  "Apache-2.0",
+  "BlueOak-1.0.0",
+  "BSD-1-Clause",
+  "BSD-2-Clause",
+  "BSD-2-Clause-Patent",
+  "BSD-3-Clause",
+  "BSL-1.0",
+  "CC-BY-3.0",
+  "CC-BY-4.0",
+  "CC0-1.0",
+  "curl",
+  "ISC",
+  "MIT",
+  "MIT-0",
+  "NCSA",
+  "OpenSSL",
+  "PostgreSQL",
+  "PSF-2.0",
+  "Python-2.0",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+  "Unlicense",
+  "WTFPL",
+  "X11",
+  "Zlib",
+]
+reason = "Permissive; keep the original copyright and license notices."
