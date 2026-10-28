@@ -1,0 +1,122 @@
+name: Release
+
+# Push a tag like v0.1.0 to build real-check for each platform and publish it
+# as a GitHub release, with checksums and the version's section of
+# CHANGELOG.md as notes. The tag must match the version in Cargo.toml.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { os: macos-15, target: aarch64-apple-darwin }
+          - { os: macos-15, target: x86_64-apple-darwin }
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-gnu }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: "1.98.1"
+          targets: ${{ matrix.target }}
+          components: rustfmt, clippy
+      - name: Check the tag matches Cargo.toml
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "tag $GITHUB_REF_NAME doesn't match Cargo.toml's version $version"
+            exit 1
+          fi
+      - run: cargo xtask check
+      - run: cargo build --release --locked --bin real-check --target ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        run: |
+          name="real-check-$GITHUB_REF_NAME-${{ matrix.target }}"
+          mkdir "$name"
+          cp target/${{ matrix.target }}/release/real-check LICENSE.md THIRD-PARTY-NOTICES.md README.md CHANGELOG.md "$name/"
+          tar -czf "$name.tar.gz" "$name"
+          shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.target }}
+          path: real-check-*.tar.gz*
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            /^## / { if (found) exit; if (index($0, "## " v " ") == 1) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          test -s notes.md || { echo "no section for $version in CHANGELOG.md"; exit 1; }
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "real-check $GITHUB_REF_NAME" --notes-file notes.md
+
+  # Points the formula in maytech-labs/homebrew-tap at the new archives.
+  # HOMEBREW_TAP_TOKEN is a fine-grained token with contents write on that repo
+  # only.
+  homebrew:
+    needs: release
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: maytech-labs/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Bump the formula
+        run: |
+          formula=Formula/real-check.rb
+          version="${GITHUB_REF_NAME#v}"
+          base="https://github.com/maytech-labs/real-check/releases/download/$GITHUB_REF_NAME"
+          # Each archive's url line names its target; its sha256 follows it.
+          for checksum in dist/*.tar.gz.sha256; do
+            archive=$(basename "$checksum" .sha256)
+            target=${archive#real-check-$GITHUB_REF_NAME-}
+            target=${target%.tar.gz}
+            sha=$(cut -d' ' -f1 "$checksum")
+            awk -v t="-$target.tar.gz\"" -v url="$base/$archive" -v sha="$sha" '
+              /^ *url / && index($0, t) { sub(/".*"/, "\"" url "\""); fix = 1; print; next }
+              fix && /^ *sha256 / { sub(/".*"/, "\"" sha "\""); fix = 0 }
+              { print }
+            ' "$formula" > formula.tmp
+            mv formula.tmp "$formula"
+            grep -q "$sha" "$formula" || { echo "no url for $target in $formula"; exit 1; }
+          done
+          sed -i "s|^  version \".*\"|  version \"$version\"|" "$formula"
+          git diff --exit-code --quiet && { echo "formula already at $version"; exit 0; }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(real-check): $version"
+          git push

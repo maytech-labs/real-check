@@ -174,9 +174,13 @@ enum Expr {
 }
 
 /// Parses an SPDX license expression. `WITH` exceptions are dropped, so the
-/// base license decides the verdict.
+/// base license decides the verdict, and `/` is read as `OR`, as older Cargo
+/// manifests write it.
 fn parse(input: &str) -> Result<Expr> {
-    let spaced = input.replace('(', " ( ").replace(')', " ) ");
+    let spaced = input
+        .replace('(', " ( ")
+        .replace(')', " ) ")
+        .replace('/', " OR ");
     let tokens: Vec<&str> = spaced.split_whitespace().collect();
     let mut pos = 0;
     let expr = parse_or(&tokens, &mut pos)?;
@@ -281,6 +285,8 @@ mod tests {
             Verdict::Review
         );
         assert_eq!(verdict("mit or apache-2.0"), Verdict::Allow);
+        assert_eq!(verdict("Unlicense/MIT"), Verdict::Allow);
+        assert_eq!(verdict("MIT/GPL-3.0-only"), Verdict::Allow);
         assert_eq!(
             verdict("GPL-2.0-only WITH Classpath-exception-2.0"),
             Verdict::Deny

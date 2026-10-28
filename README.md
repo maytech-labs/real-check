@@ -7,10 +7,12 @@ Checks that a repository and its dependencies are compatible with the Reciprocal
 ## Install
 
 ```sh
-cargo install --git https://github.com/maytech-labs/real-check
+brew install maytech-labs/tap/real-check
 ```
 
-Dependency scanning uses [syft](https://github.com/anchore/syft) to build an SBOM (`brew install syft`), or reads one you already have.
+Or from source: `cargo install --git https://github.com/maytech-labs/real-check`.
+
+`real-check deps` and `real-check check` read dependency licenses from an SBOM. Without `--sbom`, they generate one with [syft](https://github.com/anchore/syft), which the brew formula installs. `real-check repo` needs nothing else.
 
 ## Usage
 
@@ -69,6 +71,12 @@ For SPDX expressions, `OR` takes the most permissive branch and `AND` the most r
 ```sh
 REAL_LICENSE_PATH=../real-license/LICENSE.md cargo test
 ```
+
+`cargo xtask check` runs everything CI does. `cargo xtask notices` regenerates `THIRD-PARTY-NOTICES.md` after dependencies change.
+
+## Releasing
+
+Bump `version` in `Cargo.toml`, add its section to `CHANGELOG.md`, and push a `vX.Y.Z` tag. The release workflow builds macOS and Linux binaries, publishes the GitHub release, and updates the formula in [maytech-labs/homebrew-tap](https://github.com/maytech-labs/homebrew-tap) using the `HOMEBREW_TAP_TOKEN` secret.
 
 ## License
 
