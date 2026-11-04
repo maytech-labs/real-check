@@ -8,6 +8,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 - Releasing is pushing a tag: the release workflow sets the version, dates this changelog, and commits that to `main` before building.
 
+### Fixed
+
+- `license-modified` no longer flags the "Licensed under the Reciprocal Ethical AI License (REAL) 1.0." line that REAL's README says to add below the copyright line.
+
 ## 0.1.1 - 2026-10-27
 
 ### Fixed
