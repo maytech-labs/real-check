@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## Unreleased
 
+## 0.1.2 - 2026-11-04
+
 ### Changed
 
 - Releasing is pushing a tag: the release workflow sets the version, dates this changelog, and commits that to `main` before building.
