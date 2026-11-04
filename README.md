@@ -1,5 +1,7 @@
 # real-check
 
+[![License: REAL 1.0](https://img.shields.io/badge/License-REAL_1.0-blue.svg)](LICENSE.md)
+
 Checks that a repository and its dependencies are compatible with the Reciprocal Ethical AI License (REAL) 1.0.
 
 > Results reflect the licensor's reading of REAL 1.0. They are not legal advice.
