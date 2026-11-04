@@ -156,11 +156,12 @@ fn strip_markup(line: &str) -> String {
         .to_string()
 }
 
-/// License words, ignoring formatting and the copyright line(s).
+/// License words, ignoring formatting, the copyright line(s), and the
+/// "Licensed under ..." notice REAL's README says to add below them.
 fn words(text: &str) -> Vec<String> {
     text.lines()
         .map(strip_markup)
-        .filter(|l| !l.starts_with("copyright"))
+        .filter(|l| !l.starts_with("copyright") && !l.starts_with("licensed under"))
         .flat_map(|l| l.split_whitespace().map(str::to_string).collect::<Vec<_>>())
         .collect()
 }
@@ -403,6 +404,16 @@ mod tests {
             .replace("1. Definitions", "## 1. Definitions")
             .replace("\"Software\" means", "**\"Software\"** means");
         assert_eq!(first_difference(CANONICAL, &reformatted), None);
+    }
+
+    #[test]
+    fn licensed_under_notice_is_ignored() {
+        let with_notice = filled_license().replace(
+            "2026 Example Org\n",
+            "2026 Example Org\nLicensed under the Reciprocal Ethical AI License (REAL) 1.0.\n",
+        );
+        assert_ne!(with_notice, filled_license());
+        assert_eq!(first_difference(CANONICAL, &with_notice), None);
     }
 
     #[test]
